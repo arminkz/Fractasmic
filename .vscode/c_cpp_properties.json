@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/external/VulkanEngine/include",
+                "${workspaceFolder}/external/imgui",
+                "${workspaceFolder}/external/imgui/backends",
+                "${workspaceFolder}/external/spdlog/include",
+                "${workspaceFolder}/external/SDL/include",
+                "${env:VULKAN_SDK}/include"
+            ],
+            "defines": [
+                "VKE_WITH_GRAPHICS",
+                "VKE_WITH_APP",
+                "SPDLOG_COMPILED_LIB"
+            ],
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

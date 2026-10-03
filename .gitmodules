@@ -1,0 +1,15 @@
+[submodule "external/VulkanEngine"]
+	path = external/VulkanEngine
+	url = https://github.com/arminkz/VulkanEngine
+[submodule "external/spdlog"]
+	path = external/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "external/SDL"]
+	path = external/SDL
+	url = https://github.com/libsdl-org/SDL
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "external/stb"]
+	path = external/stb
+	url = https://github.com/nothings/stb
