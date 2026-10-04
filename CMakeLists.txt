@@ -40,21 +40,81 @@ set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 add_subdirectory("${FRACTASMIC_EXTERNAL_DIR}/VulkanEngine" VulkanEngine)
 
 # ---------------------------------------------------------------------------
-# Fractasmic
+# MPFR and GMP
+#
+# System libraries, like Vulkan: both build with autotools, so they cannot be
+# pulled in with add_subdirectory() the way the submodules are. Neither ships a
+# CMake package, hence the manual search.
 # ---------------------------------------------------------------------------
-add_executable(Fractasmic
-    src/main.cpp
-    src/FractalRenderer.cpp
+find_path(GMP_INCLUDE_DIR gmp.h)
+find_library(GMP_LIBRARY gmp)
+find_path(MPFR_INCLUDE_DIR mpfr.h)
+find_library(MPFR_LIBRARY mpfr)
+
+if (NOT GMP_INCLUDE_DIR OR NOT GMP_LIBRARY)
+    message(FATAL_ERROR "GMP not found. On Ubuntu/Debian: sudo apt install libgmp-dev")
+endif()
+if (NOT MPFR_INCLUDE_DIR OR NOT MPFR_LIBRARY)
+    message(FATAL_ERROR "MPFR not found. On Ubuntu/Debian: sudo apt install libmpfr-dev")
+endif()
+
+add_library(GMP::GMP UNKNOWN IMPORTED)
+set_target_properties(GMP::GMP PROPERTIES
+    IMPORTED_LOCATION "${GMP_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${GMP_INCLUDE_DIR}"
 )
 
-target_link_libraries(Fractasmic PRIVATE vke::vke)
+# MPFR is built on GMP, so linking it brings GMP along.
+add_library(MPFR::MPFR UNKNOWN IMPORTED)
+set_target_properties(MPFR::MPFR PROPERTIES
+    IMPORTED_LOCATION "${MPFR_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${MPFR_INCLUDE_DIR}"
+    INTERFACE_LINK_LIBRARIES GMP::GMP
+)
+
+# ---------------------------------------------------------------------------
+# FloatFractalRenderer — Mandelbrot in single precision
+#
+# Each renderer is its own executable with its sources under src/<name>/.
+# ---------------------------------------------------------------------------
+add_executable(FloatFractalRenderer
+    src/FloatFractalRenderer/main.cpp
+    src/FloatFractalRenderer/FloatFractalRenderer.cpp
+)
+
+# src/ holds headers shared between the executables (FontAwesome.h).
+target_include_directories(FloatFractalRenderer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(FloatFractalRenderer PRIVATE vke::vke)
 
 # Fonts and other runtime assets are loaded from the source tree.
-target_compile_definitions(Fractasmic PRIVATE "ASSET_DIR=${CMAKE_CURRENT_SOURCE_DIR}/assets/")
+target_compile_definitions(FloatFractalRenderer PRIVATE "ASSET_DIR=${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 
-# Compiles to <build>/shaders/*.spv and defines VKE_SHADER_DIR for the target.
-vke_compile_shaders(Fractasmic
+# Compiles to <build>/shaders/FloatFractalRenderer/*.spv and defines
+# VKE_SHADER_DIR for the target. The per-target directory keeps executables
+# that share a shader source from writing the same output file.
+vke_compile_shaders(FloatFractalRenderer
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders/FloatFractalRenderer
     SHADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fullscreen.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/mandelbrot.frag
+)
+
+# ---------------------------------------------------------------------------
+# DeepZoomFractalRenderer — Mandelbrot beyond float precision
+# ---------------------------------------------------------------------------
+add_executable(DeepZoomFractalRenderer
+    src/DeepZoomFractalRenderer/main.cpp
+    src/DeepZoomFractalRenderer/DeepZoomFractalRenderer.cpp
+    src/DeepZoomFractalRenderer/ReferenceOrbit.cpp
+)
+
+target_include_directories(DeepZoomFractalRenderer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(DeepZoomFractalRenderer PRIVATE vke::vke MPFR::MPFR)
+target_compile_definitions(DeepZoomFractalRenderer PRIVATE "ASSET_DIR=${CMAKE_CURRENT_SOURCE_DIR}/assets/")
+
+vke_compile_shaders(DeepZoomFractalRenderer
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders/DeepZoomFractalRenderer
+    SHADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fullscreen.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/mandelbrot_perturbation.frag
 )

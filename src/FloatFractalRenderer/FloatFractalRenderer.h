@@ -6,13 +6,13 @@ using namespace vke;
 
 // The application's scene: a fullscreen pass that evaluates the Mandelbrot set
 // in single precision, plus an ImGui panel for its parameters.
-class FractalRenderer : public Renderer
+class FloatFractalRenderer : public Renderer
 {
 public:
-    FractalRenderer(std::shared_ptr<VulkanContext> ctx,
-                    std::shared_ptr<SwapChain> swapChain,
-                    const std::string& shaderDir);
-    ~FractalRenderer() override;
+    FloatFractalRenderer(std::shared_ptr<VulkanContext> ctx,
+                         std::shared_ptr<SwapChain> swapChain,
+                         const std::string& shaderDir);
+    ~FloatFractalRenderer() override;
 
     void update() override;
     void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex) override;

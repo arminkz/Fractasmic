@@ -1,4 +1,4 @@
-#include "FractalRenderer.h"
+#include "FloatFractalRenderer.h"
 
 #include "FontAwesome.h"
 
@@ -14,9 +14,9 @@ const double kMaxScale = 10.0;
 } // namespace
 
 
-FractalRenderer::FractalRenderer(std::shared_ptr<VulkanContext> ctx,
-                                 std::shared_ptr<SwapChain> swapChain,
-                                 const std::string& shaderDir)
+FloatFractalRenderer::FloatFractalRenderer(std::shared_ptr<VulkanContext> ctx,
+                                           std::shared_ptr<SwapChain> swapChain,
+                                           const std::string& shaderDir)
     : Renderer(std::move(ctx), std::move(swapChain)), _shaderDir(shaderDir)
 {
     _maxMsaaSamples = std::min(VulkanHelper::getMaxMsaaSampleCount(_ctx), VK_SAMPLE_COUNT_8_BIT);
@@ -32,7 +32,7 @@ FractalRenderer::FractalRenderer(std::shared_ptr<VulkanContext> ctx,
 }
 
 
-FractalRenderer::~FractalRenderer()
+FloatFractalRenderer::~FloatFractalRenderer()
 {
     // Framebuffers and the pipeline reference the render pass, so let the
     // members tear down in reverse declaration order after the GPU has drained.
@@ -40,7 +40,7 @@ FractalRenderer::~FractalRenderer()
 }
 
 
-void FractalRenderer::resetView()
+void FloatFractalRenderer::resetView()
 {
     _centerX = -0.745;
     _centerY = 0.186;
@@ -48,7 +48,7 @@ void FractalRenderer::resetView()
 }
 
 
-void FractalRenderer::createRenderPass()
+void FloatFractalRenderer::createRenderPass()
 {
     const bool multisampled = _msaaSamples != VK_SAMPLE_COUNT_1_BIT;
 
@@ -72,7 +72,7 @@ void FractalRenderer::createRenderPass()
 }
 
 
-void FractalRenderer::createFramebuffers()
+void FloatFractalRenderer::createFramebuffers()
 {
     _framebuffers.clear();
 
@@ -101,7 +101,7 @@ void FractalRenderer::createFramebuffers()
 }
 
 
-void FractalRenderer::createPipeline()
+void FloatFractalRenderer::createPipeline()
 {
     PipelineParams params;
     params.renderPass = _renderPass->getRenderPass();
@@ -125,13 +125,13 @@ void FractalRenderer::createPipeline()
 }
 
 
-void FractalRenderer::onSwapChainRecreated()
+void FloatFractalRenderer::onSwapChainRecreated()
 {
     createFramebuffers();
 }
 
 
-void FractalRenderer::update()
+void FloatFractalRenderer::update()
 {
     const auto now = std::chrono::high_resolution_clock::now();
     const double deltaTime = std::chrono::duration<double>(now - _lastFrameTime).count();
@@ -153,7 +153,7 @@ void FractalRenderer::update()
 }
 
 
-void FractalRenderer::recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
+void FloatFractalRenderer::recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
 {
     const VkExtent2D extent = _swapChain->getSwapChainExtent();
 
@@ -208,7 +208,7 @@ void FractalRenderer::recordToCommandBuffer(VkCommandBuffer commandBuffer, uint3
 }
 
 
-void FractalRenderer::handleMouseDrag(float dx, float dy)
+void FloatFractalRenderer::handleMouseDrag(float dx, float dy)
 {
     // Mouse deltas are in window points; the screen is 2 * _scale tall.
     const double unitsPerPoint = 2.0 * _scale / ImGui::GetIO().DisplaySize.y;
@@ -217,7 +217,7 @@ void FractalRenderer::handleMouseDrag(float dx, float dy)
 }
 
 
-void FractalRenderer::handleMouseWheel(float dy)
+void FloatFractalRenderer::handleMouseWheel(float dy)
 {
     const ImGuiIO& io = ImGui::GetIO();
 
@@ -234,7 +234,7 @@ void FractalRenderer::handleMouseWheel(float dy)
 }
 
 
-void FractalRenderer::buildUI()
+void FloatFractalRenderer::buildUI()
 {
     ImGui::Begin("Fractasmic");
 

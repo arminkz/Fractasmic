@@ -1,5 +1,5 @@
 #include "vke/vke.h"
-#include "FractalRenderer.h"
+#include "DeepZoomFractalRenderer.h"
 #include "FontAwesome.h"
 
 using namespace vke;
@@ -19,7 +19,7 @@ int main()
     const std::string shaderDir = VKE_STR(VKE_SHADER_DIR);
 
     WindowConfig config;
-    config.title = "Fractasmic";
+    config.title = "Fractasmic - Deep Zoom";
     config.width = 1280;
     config.height = 720;
     // No fixed sleep between frames; the swapchain's present mode paces them.
@@ -39,7 +39,7 @@ int main()
 
     config.createRenderer = [&shaderDir](std::shared_ptr<VulkanContext> ctx,
                                          std::shared_ptr<SwapChain> swapChain) {
-        return std::make_unique<FractalRenderer>(std::move(ctx), std::move(swapChain), shaderDir);
+        return std::make_unique<DeepZoomFractalRenderer>(std::move(ctx), std::move(swapChain), shaderDir);
     };
 
     try {
