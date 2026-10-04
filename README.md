@@ -13,15 +13,15 @@ It builds two executables:
 
 How far each technique can zoom before the image breaks down:
 
-| Technique | Executable | Max zoom | What sets the limit |
-| --- | --- | --- | --- |
-| Naive float | `FloatFractalRenderer` | about 5 × 10⁴ | A float has about 7 significant digits, so neighbouring pixels get the same coordinate. |
-| Perturbation, MPFR reference orbit with float deltas | `DeepZoomFractalRenderer`, down to about 10²⁴ | about 10³⁰ | The per-pixel offsets from the reference orbit fall below the smallest value a float can hold (about 10⁻³⁸). |
-| Perturbation, MPFR reference orbit with extended-exponent deltas | `DeepZoomFractalRenderer`, past about 10²⁴ | 10¹⁰⁰⁰ | A clamp in the renderer, not the technique: each delta is a float mantissa with a separate integer exponent, which has no floor. The clamp bounds the cost of the reference orbit. |
+| Technique | Max zoom | What sets the limit |
+| --- | --- | --- |
+| Naive float | about 5 × 10⁴ | A float has about 7 significant digits, so neighbouring pixels get the same coordinate. |
+| Perturbation, MPFR reference orbit with float deltas | about 10³⁰ | The per-pixel offsets from the reference orbit fall below the smallest value a float can hold (about 10⁻³⁸). |
+| Perturbation, MPFR reference orbit with extended-exponent deltas | 10¹⁰⁰⁰ | A clamp in the renderer, not the technique: each delta is a float mantissa with a separate integer exponent, which has no floor. The clamp bounds the cost of the reference orbit. |
 
 Zoom is the magnification relative to a view whose half-height is 1 in the complex plane. Both renderers clamp at their limits.
 
-`DeepZoomFractalRenderer` switches between the two perturbation variants on its own: plain float deltas while they are safely inside float's range, because they are faster, and extended-exponent deltas beyond that.
+Naive float is `FloatFractalRenderer`; both perturbation variants are `DeepZoomFractalRenderer`. It switches between them on its own at about 10²⁴: plain float deltas while they are safely inside float's range, because they are faster, and extended-exponent deltas beyond that.
 
 In both variants the MPFR precision of the reference orbit grows with the zoom, so the orbit is not what limits depth. What deep views do need is more iterations, and the renderer caps those at 16,384.
 
