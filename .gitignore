@@ -1,2 +1,8 @@
 build/
 imgui.ini
+generated/
+
+/*.md
+!/README.md
+
+*.mp4

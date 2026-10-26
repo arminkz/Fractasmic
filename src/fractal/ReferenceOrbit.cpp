@@ -5,13 +5,10 @@
 
 namespace {
 
-// Rounds a high-precision point to the two float forms the shader reads.
+// Rounds a high-precision point to the extended-exponent (floatexp) form the shader reads.
 OrbitPoint makeOrbitPoint(mpfr_srcptr x, mpfr_srcptr y)
 {
     OrbitPoint point{};
-
-    point.z[0] = mpfr_get_flt(x, MPFR_RNDN);
-    point.z[1] = mpfr_get_flt(y, MPFR_RNDN);
 
     // Each part as d * 2^exp with |d| in [0.5, 1); zero comes back as 0 * 2^0.
     long xExponent = 0;
@@ -35,9 +32,10 @@ OrbitPoint makeOrbitPoint(mpfr_srcptr x, mpfr_srcptr y)
         exponent = std::max(xExponent, yExponent);
     }
 
-    // A part more than a float's 24 bits below the other contributes nothing.
+    // adjust mantissas to use the shared exponent.
     const auto shifted = [exponent](double mantissa, long partExponent) {
         if (mantissa == 0.0 || exponent - partExponent > 64) return 0.0f;
+        // ldexp(x,n) = x * 2^n
         return static_cast<float>(std::ldexp(mantissa, static_cast<int>(partExponent - exponent)));
     };
     point.mantissa[0] = shifted(xMantissa, xExponent);
@@ -48,15 +46,6 @@ OrbitPoint makeOrbitPoint(mpfr_srcptr x, mpfr_srcptr y)
 }
 
 } // namespace
-
-
-mpfr_prec_t precisionForScale(mpfr_srcptr scale)
-{
-    // scale is below 2^exponent, so -exponent bits place a point on the screen;
-    // never go below what a double already offers.
-    const long positionBits = std::max(64L, -static_cast<long>(mpfr_get_exp(scale)));
-    return static_cast<mpfr_prec_t>(positionBits) + 64;
-}
 
 
 std::vector<OrbitPoint> computeReferenceOrbit(mpfr_srcptr cx, mpfr_srcptr cy, int maxIters)

@@ -1,6 +1,3 @@
-[submodule "external/VulkanEngine"]
-	path = external/VulkanEngine
-	url = https://github.com/arminkz/VulkanEngine
 [submodule "external/spdlog"]
 	path = external/spdlog
 	url = https://github.com/gabime/spdlog
@@ -13,3 +10,6 @@
 [submodule "external/stb"]
 	path = external/stb
 	url = https://github.com/nothings/stb
+[submodule "external/VKE"]
+	path = external/VKE
+	url = https://github.com/arminkz/VKE

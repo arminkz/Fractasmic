@@ -8,32 +8,30 @@
 // Must match ESCAPE_RADIUS in mandelbrot_perturbation.frag.
 inline constexpr double kEscapeRadius = 256.0;
 
-// Exponent that stands for zero in the mantissa/exponent form below.
-// Must match ZERO_EXPONENT in mandelbrot_perturbation.frag.
+// normal float:
+// | sign | exponent | mantissa |
+// |  1   |    8     |    23    |  = 32 bits
+
+// floatexp:
+// | mantissa (float) |  exponent (int)  |
+// |       32         |        32        | = 64 bits
+
+// in floatexp zero is coded as mantissa 0 with ZERO_EXPONENT (−2^28) as a marker
 inline constexpr int32_t kZeroExponent = -(1 << 28);
 
-// One point of the reference orbit, in the two forms the shader reads.
-// Matches OrbitPoint in mandelbrot_perturbation.frag (std430).
+// Orbit data passed to the perturbation shader (in floatexp)
 struct OrbitPoint
 {
-    // Plain float value, for the float path. Underflows to zero when the orbit
-    // passes closer to the origin than a float can express.
-    float z[2];
+    // Complex number floatexp
+    // Zₙ = (mantissa[0] + i · mantissa[1]) × 2^exponent
 
-    // The same value as mantissa * 2^exponent, with the larger mantissa
-    // component in [0.5, 1), so no value is too small to represent.
     float mantissa[2];
     int32_t exponent;
 
+    // std430 aligns the struct to its vec2, which rounds its size up to 16.
     int32_t padding;
 };
-static_assert(sizeof(OrbitPoint) == 24, "OrbitPoint must match mandelbrot_perturbation.frag");
-
-// Bits of precision the centre coordinate and the reference orbit need at a
-// given scale (half the screen height, in complex-plane units): enough to
-// resolve a pixel, plus headroom for the rounding that accumulates over the
-// iterations.
-mpfr_prec_t precisionForScale(mpfr_srcptr scale);
+static_assert(sizeof(OrbitPoint) == 16, "OrbitPoint must match perturbation_common.glsl");
 
 // Iterates Z -> Z² + C in high precision and returns the orbit rounded to
 // float: Z₀ = 0, Z₁ = C, Z₂ = C² + C, ...

@@ -1,0 +1,149 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+// Keyframe rendering by perturbation, in resumable steps.
+//
+// This is the same iteration as mandelbrot_perturbation.frag, but a pixel does
+// not run to completion in one go. Each dispatch advances every unfinished
+// pixel by at most `stepIters` iterations and stores where it got to, and the
+// next dispatch carries on from there. That keeps every GPU submission short
+// no matter how high the iteration limit is; a single submission that runs for
+// seconds gets the whole context killed by the driver.
+
+#include "perturbation_common.glsl"
+
+layout(local_size_x = 64) in;
+
+// Matches KeyframeMode::PushConstants.
+layout(push_constant) uniform PushConstants {
+    vec2 resolution;        // keyframe size in pixels
+    // Half the image height in complex-plane units, as mantissa * 2^exponent.
+    float scaleMantissa;
+    int scaleExponent;
+    int maxIters;
+    int orbitLength;        // number of points in the reference orbit
+    // The dispatch covers a band of whole rows: `pixelCount` pixels starting
+    // at pixel `firstPixel` of the keyframe, counted row by row.
+    int firstPixel;
+    int pixelCount;
+    int stepIters;          // most iterations a pixel may advance in this dispatch
+    int reset;              // 1 on a band's first dispatch: start every pixel afresh
+} pc;
+
+// Reference orbit of the image centre C: Z₀ = 0, Z₁ = C, Z₂ = C² + C, ...
+layout(std430, set = 0, binding = 0) readonly buffer ReferenceOrbit {
+    OrbitPoint points[];
+} orbit;
+
+// Where a pixel's iteration stands between dispatches.
+// Matches KeyframeMode::PixelState.
+struct PixelState {
+    vec2 dz;            // δz as mantissa * 2^dzExponent
+    int dzExponent;
+    int ref;            // index into the reference orbit
+    int n;              // iterations completed
+    int done;           // 1 once the result has been written
+};
+
+layout(std430, set = 0, binding = 1) buffer PixelStates {
+    PixelState states[];
+};
+
+// Smooth iteration count per pixel of the band, or 0 for points inside the set.
+layout(std430, set = 0, binding = 2) writeonly buffer Results {
+    float results[];
+};
+
+float smoothIterations(int n, vec2 z) {
+    return float(n) - log2(log2(dot(z, z))) + 4.0;
+}
+
+ExtComplex orbitPoint(int index) {
+    return ExtComplex(orbit.points[index].mantissa, orbit.points[index].exponent);
+}
+
+// Advances `s` until iteration `stop`. Returns true and sets `result` if the
+// pixel escaped. dc is the pixel's offset from C.
+bool advance(inout PixelState s, ExtComplex dc, int stop, out float result) {
+    ExtComplex dz = ExtComplex(s.dz, s.dzExponent);
+    int ref = s.ref;
+    int n = s.n;
+    bool escaped = false;
+    result = 0.0;
+
+    for (; n < stop; n++) {
+        // δzₙ₊₁ = 2·Zₙ·δzₙ + δzₙ² + δc
+        ExtComplex Z = orbitPoint(ref);
+        ExtComplex twoZ = ExtComplex(Z.m, Z.e + 1);
+        dz = extAdd(extMul(extAdd(twoZ, dz), dz), dc);
+        ref++;
+
+        // zₙ = Zₙ + δzₙ
+        ExtComplex zExt = extAdd(orbitPoint(ref), dz);
+
+        // A value past the escape radius has an exponent of at least 8, so the
+        // conversion to float is only done, and only safe, from there up.
+        if (zExt.e >= 8) {
+            vec2 z = zExt.m * powerOfTwo(min(zExt.e, 60));
+            if (dot(z, z) > ESCAPE_RADIUS * ESCAPE_RADIUS) {
+                result = smoothIterations(n, z);
+                escaped = true;
+                break;
+            }
+        }
+
+        // Rebase: when z is smaller than δz, the sum above has cancelled away
+        // its significant digits. Carry z on as the new δz against the start of
+        // the reference orbit (Z₀ = 0), where it is exact again. The same move
+        // handles running off the end of the reference orbit.
+        if (extLess(zExt, dz) || ref == pc.orbitLength - 1) {
+            dz = zExt;
+            ref = 0;
+        }
+    }
+
+    s.dz = dz.m;
+    s.dzExponent = dz.e;
+    s.ref = ref;
+    s.n = n;
+    return escaped;
+}
+
+void main() {
+    int index = int(gl_GlobalInvocationID.x);
+    if (index >= pc.pixelCount) return;
+
+    PixelState s;
+    if (pc.reset != 0) {
+        s = PixelState(vec2(0.0), ZERO_EXPONENT, 0, 0, 0);
+    } else {
+        s = states[index];
+        if (s.done != 0) return;
+    }
+
+    // The pixel's centre, in the same coordinates gl_FragCoord would give.
+    int pixel = pc.firstPixel + index;
+    int width = int(pc.resolution.x);
+    vec2 coord = vec2(pixel % width, pixel / width) + 0.5;
+
+    vec2 uv = (2.0 * coord - pc.resolution) / pc.resolution.y;
+
+    // Row 0 is the top of the image; flip so the imaginary axis points up.
+    uv.y = -uv.y;
+
+    // δc = uv * scale.
+    int stop = min(s.n + pc.stepIters, pc.maxIters);
+    float result;
+    bool escaped = advance(s, extNormalize(uv * pc.scaleMantissa, pc.scaleExponent), stop, result);
+
+    if (escaped) {
+        results[index] = result;
+        s.done = 1;
+    } else if (s.n >= pc.maxIters) {
+        // Never escaped: inside the set as far as this iteration limit can tell.
+        results[index] = 0.0;
+        s.done = 1;
+    }
+
+    states[index] = s;
+}

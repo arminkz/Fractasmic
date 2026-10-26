@@ -10,16 +10,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(FRACTASMIC_EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
 
-if (NOT EXISTS "${FRACTASMIC_EXTERNAL_DIR}/VulkanEngine/CMakeLists.txt")
+if (NOT EXISTS "${FRACTASMIC_EXTERNAL_DIR}/VKE/CMakeLists.txt")
     message(FATAL_ERROR
         "Submodules are missing. Run: git submodule update --init")
 endif()
 
 # ---------------------------------------------------------------------------
-# VulkanEngine
+# VKE
 #
 # Every dependency (spdlog, SDL3, Dear ImGui, stb) is a submodule under
-# external/, so VulkanEngine resolves them locally and never downloads anything.
+# external/, so VKE resolves them locally and never downloads anything.
 # Vulkan itself comes from the system / Vulkan SDK.
 # ---------------------------------------------------------------------------
 set(VKE_EXTERNAL_DIR       "${FRACTASMIC_EXTERNAL_DIR}" CACHE PATH "" FORCE)
@@ -27,7 +27,7 @@ set(VKE_FETCH_DEPENDENCIES OFF CACHE BOOL "" FORCE)
 
 set(VKE_WITH_GRAPHICS      ON  CACHE BOOL "" FORCE)
 set(VKE_WITH_APP           ON  CACHE BOOL "" FORCE)
-# Meshes, OBJ loading and cameras would pull in glm and tinyobjloader.
+
 set(VKE_WITH_GEOMETRY      OFF CACHE BOOL "" FORCE)
 set(VKE_WITH_RAYTRACING    OFF CACHE BOOL "" FORCE)
 set(VKE_BUILD_EXAMPLES     OFF CACHE BOOL "" FORCE)
@@ -37,7 +37,7 @@ set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON  CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 
-add_subdirectory("${FRACTASMIC_EXTERNAL_DIR}/VulkanEngine" VulkanEngine)
+add_subdirectory("${FRACTASMIC_EXTERNAL_DIR}/VKE" VKE)
 
 # ---------------------------------------------------------------------------
 # MPFR and GMP
@@ -73,48 +73,65 @@ set_target_properties(MPFR::MPFR PROPERTIES
 )
 
 # ---------------------------------------------------------------------------
-# FloatFractalRenderer — Mandelbrot in single precision
+# Fractasmic
 #
-# Each renderer is its own executable with its sources under src/<name>/.
+# One program: the explorer, a fullscreen pass with the perturbation fragment
+# shader; keyframe mode, which renders zoom sequences offline with the same
+# iteration as a resumable compute shader and browses them; and video assembly
+# from the keyframes, which pipes frames to the ffmpeg program at run time, so
+# ffmpeg is not a build dependency.
+#
+# The sources are layered; each folder uses only those listed above it:
+#   src/fractal/    the maths: MPFR only, no Vulkan, no UI
+#   src/keyframes/  reading and writing keyframe files
+#   src/video/      blending keyframes into frames on the CPU, and encoding
+#   src/ui/         ImGui pieces both modes use
+#   src/modes/      the explore and keyframe modes: Vulkan and ImGui
+#   src/            the app, which switches between the modes, and main()
+# The shaders share shaders/perturbation_common.glsl through #include, which
+# the shader build tracks as a dependency on its own.
 # ---------------------------------------------------------------------------
-add_executable(FloatFractalRenderer
-    src/FloatFractalRenderer/main.cpp
-    src/FloatFractalRenderer/FloatFractalRenderer.cpp
+add_executable(Fractasmic
+    src/fractal/BigMath.cpp
+    src/fractal/ReferenceOrbit.cpp
+
+    src/keyframes/KeyframeSequence.cpp
+    src/keyframes/KeyframeWriter.cpp
+
+    src/video/FrameRenderer.cpp
+    src/video/VideoAssembler.cpp
+    src/video/VideoEncoder.cpp
+
+    src/ui/Sidebar.cpp
+    src/ui/StatusBar.cpp
+
+    src/modes/ExploreMode.cpp
+    src/modes/KeyframeMode.cpp
+
+    src/App.cpp
+    src/main.cpp
 )
 
-# src/ holds headers shared between the executables (FontAwesome.h).
-target_include_directories(FloatFractalRenderer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(FloatFractalRenderer PRIVATE vke::vke)
+# src/ is the include root: "fractal/Palette.h", "ui/FontAwesome.h".
+target_include_directories(Fractasmic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Video assembly runs on threads of its own.
+find_package(Threads REQUIRED)
+target_link_libraries(Fractasmic PRIVATE vke::vke MPFR::MPFR Threads::Threads)
 
 # Fonts and other runtime assets are loaded from the source tree.
-target_compile_definitions(FloatFractalRenderer PRIVATE "ASSET_DIR=${CMAKE_CURRENT_SOURCE_DIR}/assets/")
+target_compile_definitions(Fractasmic PRIVATE "ASSET_DIR=${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 
-# Compiles to <build>/shaders/FloatFractalRenderer/*.spv and defines
-# VKE_SHADER_DIR for the target. The per-target directory keeps executables
-# that share a shader source from writing the same output file.
-vke_compile_shaders(FloatFractalRenderer
-    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders/FloatFractalRenderer
-    SHADERS
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fullscreen.vert
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/mandelbrot.frag
-)
+# Assembling a video's frames is all arithmetic on the CPU; without
+# optimisation it is several times slower, and Debug builds have none.
+set_source_files_properties(src/video/FrameRenderer.cpp PROPERTIES COMPILE_OPTIONS
+    "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-O2>")
 
-# ---------------------------------------------------------------------------
-# DeepZoomFractalRenderer — Mandelbrot beyond float precision
-# ---------------------------------------------------------------------------
-add_executable(DeepZoomFractalRenderer
-    src/DeepZoomFractalRenderer/main.cpp
-    src/DeepZoomFractalRenderer/DeepZoomFractalRenderer.cpp
-    src/DeepZoomFractalRenderer/ReferenceOrbit.cpp
-)
-
-target_include_directories(DeepZoomFractalRenderer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(DeepZoomFractalRenderer PRIVATE vke::vke MPFR::MPFR)
-target_compile_definitions(DeepZoomFractalRenderer PRIVATE "ASSET_DIR=${CMAKE_CURRENT_SOURCE_DIR}/assets/")
-
-vke_compile_shaders(DeepZoomFractalRenderer
-    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders/DeepZoomFractalRenderer
+# Compiles to <build>/shaders/*.spv and defines VKE_SHADER_DIR for the target.
+vke_compile_shaders(Fractasmic
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders
     SHADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fullscreen.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/mandelbrot_perturbation.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/mandelbrot_keyframe.comp
 )
